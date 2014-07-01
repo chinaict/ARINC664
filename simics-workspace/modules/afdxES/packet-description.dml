@@ -99,22 +99,21 @@ struct UDP_Item
 	uint2 port_type;
 }
 
-struct PortItem {
-	uint8 frame[PORT_DATA_SIZE];    // 最长帧大小
-	uint32 size;                    // 有效帧长度
-	uint32 offset;                  // 当前数据偏移(用于IP重组)
+struct PortItem 
+{
+	uint8 *frame;
+	uint32 size;
 	uint32 dest_ip;
 	uint32 src_ip;
 }
 
-struct PortQueue {
-	uint32 front;
-	uint32 rear;
-	
-	PortItem item[ITEM_NUM];         // 这个用8K除以最小的帧长度64
-	
-	uint32 item_num;         // 用于存储当前已经存储了多少项
-	uint32 frame_size;       // 存储的所有帧合并在一起的大小
+struct PortQueue 
+{
+	QueueItem *head;
+	QueueItem *tail;
+	int32 item_length;
+	int32 queue_size;
+	int32 queue_full;
 }
 
 

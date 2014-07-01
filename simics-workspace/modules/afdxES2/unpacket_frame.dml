@@ -47,10 +47,11 @@ method unpacket_frame(uint8 *buffer,uint32 size)
 
 	call $BinarySearchAnalyseCfgRamArray(($analyse_cfg_cam_array), T) -> (port_id); 
 	
-
+	//for test start
 	port_id = 0;
+	//for test end
+
 	//verify packet is correct or incorrect
-	//return;
 	enable_network_A = cast((*(buffer + INTERFACE_ID_ADDR)>>5)&0x1,uint1);
 	enable_network_B = cast((*(buffer + INTERFACE_ID_ADDR)>>6)&0x1,uint1);
 
@@ -79,60 +80,16 @@ method unpacket_frame(uint8 *buffer,uint32 size)
 	udp_item.src_ip = *cast(buffer+SRC_IP_ADDR,uint32 *);
 	udp_item.udp_packet_size = size - (IP_HEADER_LENGTH + MAC_HEADER_LENGTH +IPV4_LENGTH + SN_CRC_LENGTH);
 	udp_item.mf =mf;
-	/*
-	if(port_id>=0 && port_id <1024) {
-		switch (udp_item.port_type) {
-			case 0: case 1:
-			    call $EnPortQueue(&($port0[port_id].queue),udp_item);
-				break;
-			case 2:
-			    call $RefreshPortData(&($port1[port_id]), udp_item);
-			default:
-			    log "error" : "Unsupported port type";
-			    break;
-		}
-	} else if(port_id>=1024 && port_id <2048) {
-	    switch (udp_item.port_type) {
-			case 0: case 1:
-			    call $EnPortQueue(&($port1[port_id-1024].queue),udp_item);
-				break;
-			case 2:
-			    call $RefreshPortData(&($port1[port_id-1024]), udp_item);
-			default:
-			    log "error" : "Unsupported port type";
-			    break;
-		}
-	} else if(port_id>=2048 && port_id <3072) {
-		switch (udp_item.port_type) {
-			case 0: case 1:
-			    call $EnPortQueue(&($port2[port_id-2048].queue),udp_item);	
-				break;
-			case 2:
-			    call $RefreshPortData(&($port1[port_id-2048]), udp_item);
-			default:
-			    log "error" : "Unsupported port type";
-			    break;
-		}
-	} else if(port_id>=3072 && port_id <4096) {
-	    switch (udp_item.port_type) {
-			case 0: case 1:
-			    call $EnPortQueue(&($port3[port_id-3072].queue),udp_item);
-				break;
-			case 2:
-			    call $RefreshPortData(&($port1[port_id-3072]), udp_item);
-			default:
-			    log "error" : "Unsupported port type";
-			    break;
-		}
-	} else {
-		log "info": "wrong port id";
-	}
-	*/
+
 	local bool result;
 	if (port_id >= 0 && port_id < 4096) {
 		switch (udp_item.port_type) {
 			case 0: case 1:
-			    call $EnPortQueue(&($port[port_id].queue),udp_item);
+			    call $EnPortQueue(($port[port_id].queue),udp_item)->(result);
+				if(result == false)
+				{
+					log "info": "port queue is full";
+				}
 				break;
 			case 2:
 			    call $RefreshPortData(&($port[port_id]), udp_item);

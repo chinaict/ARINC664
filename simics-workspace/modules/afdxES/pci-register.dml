@@ -1371,7 +1371,7 @@ bank pciport{
 			    switch ($port[port_id].port_type) 
 				{
 			        case 0: case 1:
-				        inline $IsPortQueueEmpty(&($port[port_id].queue)) ->(is_empty);
+				        inline $IsPortQueueEmpty(($port[port_id].queue)) ->(is_empty);
 						break;
 					case 2:
 					    inline $IsPortSampleEmpty(&($port[port_id])) -> (is_empty);
@@ -1407,7 +1407,7 @@ bank pciport{
 	
 				if (port_id >= 0 && port_id < 4096) 
 				{
-				    inline $DePortQueue(&($port[port_id].queue), &item);
+				    inline $DePortQueue(($port[port_id].queue), &item)->(result);
 					if (result == false)
 					{
 						log "info" : "queue is empty!";
