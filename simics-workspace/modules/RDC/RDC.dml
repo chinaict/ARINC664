@@ -1,0 +1,140 @@
+// RDC.dml - Skeleton code to base new DML device modules on
+
+dml 1.2;
+
+device RDC;
+
+parameter desc = "name of device";
+
+parameter documentation = "Longer description that will appear in the help";
+
+import "utility.dml";
+import "interface.dml";
+
+// USER-TODO: add connect definitions here, if needed
+connect data_exchange_action {
+	parameter documentation = "Send frame to A664";
+	parameter configuration = "required";
+	
+	interface Send_To_A664 {
+		parameter c_type = "Send_To_A664_interface_t";
+	}
+}
+
+
+
+implement Send_To_RDC {
+	method send_to_RDC(void *data, int dest_udp, int length) {
+		log "info" : "called by ARINC664 2";
+	}
+}
+
+// USER-TODO: add attribute definitions here, if needed
+
+// Basic bank declaration
+bank regs {
+    parameter register_size = 4;
+    // USER-TODO: Add more register declarations here.  Usually use just one
+    // line per register, containing size (optional), offset, any templates
+    // implemented, and a short description. Use the read_write template for
+    // normal registers where a read usually returns the last written value,
+    // and the unimplemented template for registers that you haven't yet
+    // implemented.
+    register counter @ 0x00 is (read_write) "A simple counter.";
+}
+
+// USER-TODO: add implement and port declarations here, if needed
+
+// USER-TODO: add event declarations here, if needed
+
+// USER-TODO: add common methods here, if needed
+
+// USER-TODO: add templates here, if needed
+
+// Implementation of registers
+bank regs {
+    register counter {
+        // Methods and fields go here. If there is nothing to add here, the
+        // register block can be removed altogether.
+		method after_write(memop) {
+			local int32 port_id = 0;
+			local uint8 data[64];
+			local int32 length = 64;
+	
+			data[0] = 0;
+			data[1] = 0;
+			data[2] = 0;
+			data[3] = 48;
+			data[4] = 0;
+			data[5] = 0;
+			data[6] = 0;
+			data[7] = 0;
+			data[8] = 0;
+			data[9] = 0;
+			data[10] = 0;
+			data[11] = 0;
+			data[12] = 0;
+			data[13] = 8;
+			data[14] = 69;
+			data[15] = 0;
+			data[16] = 45;
+			data[17] = 0;
+			data[18] = 1;
+			data[19] = 0;
+			data[20] = 0;
+			data[21] = 0;
+			data[22] = 255;
+			data[23] = 0;
+			data[24] = 234;
+			data[25] = 141;
+			data[26] = 0;
+			data[27] = 0;
+			data[28] = 0;
+			data[29] = 10;
+			data[30] =  0;
+			data[31] =  0;
+			data[32] = 0;
+			data[33] = 10;
+			data[34] = 0;
+			data[35] = 0;
+			data[36] = 0;
+			data[37] = 0;
+			data[38] = 18;
+			data[39] = 0;
+			data[40] = 182;
+			data[41] = 210;
+			data[42] = 0;
+			data[43] = 1;
+			data[44] = 2;
+			data[45] = 3;
+			data[46] = 4;
+			data[47] = 5;
+			data[48] = 6;
+			data[49] = 7;
+			data[50] = 8;
+			data[51] = 9;
+			data[52] = 0;
+			data[53] = 0;
+			data[54] = 0;
+			data[55] = 0;
+			data[56] = 0;
+			data[57] = 0;
+			data[58] = 0;
+			data[59] = 0;
+			data[60] = 0;
+			data[61] = 0;
+			data[62] = 0;
+			data[63] = 0;		
+			
+			log "info" : "Send to ARCIN 2";
+			$data_exchange_action.Send_To_A664.send_to_A664(port_id, &data, length);
+		}
+    }
+}
+
+// USER-TODO: Add init() and post_init() methods here, if needed.
+// init() will be run to set the empty state of the model, before any
+// configuration or checkpointed attributes are set.  post_init() is run after
+// all configuration attributes have been set.  This happens both when the
+// initial configuration is set and when the configuration is loaded from a
+// checkpoint.

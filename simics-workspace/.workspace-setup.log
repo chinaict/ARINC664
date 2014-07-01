@@ -1,0 +1,55 @@
+Wrote or updated E:\simics-workspace\bin\tfdecode.bat
+Wrote or updated E:\simics-workspace\bin\addon-manager.bat
+Wrote or updated E:\simics-workspace\bin\gdb.bat
+Wrote or updated E:\simics-workspace\bin\dmlc.bat
+Wrote or updated E:\simics-workspace\simics.bat
+Wrote or updated E:\simics-workspace\bin\simics.bat
+Wrote or updated E:\simics-workspace\bin\stop-license-server.bat
+Wrote or updated E:\simics-workspace\bin\checkpoint-merge.bat
+Wrote or updated E:\simics-workspace\bin\mini-python.bat
+Wrote or updated E:\simics-workspace\bin\lookup-file.bat
+Wrote or updated E:\simics-workspace\bin\workspace-setup.bat
+Wrote or updated E:\simics-workspace\bin\craff.bat
+Wrote or updated E:\simics-workspace\simics-gui.bat
+Wrote or updated E:\simics-workspace\bin\simics-gui.bat
+Wrote or updated E:\simics-workspace\bin\start-license-server.bat
+Wrote or updated E:\simics-workspace\bin\test-runner.bat
+Wrote or updated E:\simics-workspace\bin\make.bat
+Created directory E:\simics-workspace\targets\common
+Created directory E:\simics-workspace\targets\sbc7447
+Wrote or updated E:\simics-workspace\targets\sbc7447\sbc7447-vxworks653-2.2.simics
+Wrote or updated E:\simics-workspace\targets\sbc7447\sbc7447-vxworks-5.5.1.simics
+Updated directory E:\simics-workspace\targets\mv64560
+Wrote or updated E:\simics-workspace\targets\mv64560\mv64560-vxworks653-2.2.simics.workspace-setup.new
+Updated directory E:\simics-workspace\targets\common
+Updated directory E:\simics-workspace\targets\db64560
+Wrote or updated E:\simics-workspace\targets\db64560\db64560-multi-vxworks-6.1.simics
+Wrote or updated E:\simics-workspace\targets\db64560\db64560-multi-linux.simics
+Wrote or updated E:\simics-workspace\targets\db64560\db64560-vxworks-6.1-common.simics
+Wrote or updated E:\simics-workspace\targets\db64560\db64560-linux-common.simics
+Updated directory E:\simics-workspace\targets\common
+Updated directory E:\simics-workspace\targets\cosim
+Wrote or updated E:\simics-workspace\targets\cosim\queues-in-cosimulator.simics
+Updated directory E:\simics-workspace\targets\vacuum
+Wrote or updated E:\simics-workspace\targets\vacuum\vacuum.simics
+Updated directory E:\simics-workspace\targets\ppc-simple
+Wrote or updated E:\simics-workspace\targets\ppc-simple\ppc-simple-common.simics
+Wrote or updated E:\simics-workspace\targets\ppc-simple\ppc-simple-440gp-common.simics
+Updated directory E:\simics-workspace\targets\sample
+Wrote or updated E:\simics-workspace\targets\sample\sample-linux-common.simics
+Updated directory E:\simics-workspace\targets\mpc8641-simple
+Wrote or updated E:\simics-workspace\targets\mpc8641-simple\firststeps.simics
+Wrote or updated E:\simics-workspace\targets\mpc8641-simple\mpc8641-simple-u-boot.simics
+Wrote or updated E:\simics-workspace\targets\mpc8641-simple\mpc8641-simple-linux-2.6.34-common.simics
+Wrote or updated E:\simics-workspace\targets\mpc8641-simple\mpc8641-simple-linux-dec21140a-dml.simics
+Wrote or updated E:\simics-workspace\targets\mpc8641-simple\mpc8641-simple-linux-2.6.34-multi.simics
+Updated directory E:\simics-workspace\targets\common
+Updated directory E:\simics-workspace\targets\vacuum
+Wrote or updated E:\simics-workspace\targets\vacuum\vacuum.simics
+Wrote or updated E:\simics-workspace\compiler.mk
+Wrote or updated E:\simics-workspace\config.mk
+Wrote or updated E:\simics-workspace\GNUmakefile
+Workspace updated successfully
+
+The following files were left untouched because they were modified:
+   targets\mv64560\mv64560-vxworks653-2.2.simics (new version available as targets\mv64560\mv64560-vxworks653-2.2.simics.workspace-setup.new)

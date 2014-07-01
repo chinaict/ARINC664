@@ -1,0 +1,4 @@
+run-command-file "%script%/vacuum.simics"
+@dev1 = pre_conf_object("dev1", "mydevice")
+@SIM_add_configuration([dev1], None)
+phys_mem.add-map dev1:regs 0x1000 0x100

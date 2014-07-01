@@ -1,0 +1,64 @@
+// Copyright 2005-2011 Virtutech AB
+dml 1.2;
+
+device afdxES;
+
+parameter desc = "afdx End System";
+parameter documentation = "afdx End System";
+parameter byte_order = "big-endian"; 
+ 
+import "utility.dml";
+import "io-memory.dml";
+import "simics/devs/memory-space.dml";
+import "packet-frame.dml";
+import "config-tables.dml";
+import "vl.dml";
+import "constant.dml";
+import "unpacket_frame.dml";
+import "afdx-exchange.dml";
+import "pci-action.dml";
+import "pci-register.dml";
+// import "afdxES-register.dml";
+
+connect local_space 
+{
+    parameter documentation = "The local-space the device uses to send/receive"
+        + "data to/from PCI memory space.";
+    parameter configuration = "optional";
+    interface memory_space 
+	{
+        parameter c_type = "memory_space_interface_t";
+    }
+}
+
+connect phy0 
+{
+	parameter documentation = "Send data to ARINC664 2";
+    parameter configuration = "optional";
+    interface data_exchange 
+	{
+        parameter c_type = "data_exchange_interface_t";
+    }
+}
+
+implement data_exchange 
+{
+	method send_frame(uint8 *data, uint32 size) 
+	{
+		log "info" : "called by ARINC2 ";
+		call $unpacket_frame(data, size);
+	}
+}
+
+
+// USER-TODO: Add init() and post_init() methods here, if needed.
+// init() will be run to set the empty state of the model, before any
+// configuration or checkpointed attributes are set.  post_init() is run after
+// all configuration attributes have been set.  This happens both when the
+// initial configuration is set and when the configuration is loaded from a
+// checkpoint.
+method post_init() 
+{
+	call $pci_config.update_all_mappings();   //测试需要，暂时先注释掉
+    memset($udp_first,1,PORT_SIZE);	
+}

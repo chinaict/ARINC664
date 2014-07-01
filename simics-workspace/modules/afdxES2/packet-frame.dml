@@ -1,0 +1,350 @@
+dml 1.2;
+
+import "vl.dml";
+import "checksum.dml";
+import "constant.dml";
+import "packet-description.dml";
+/*在DMA传输数据过来后，调用此函数进行封包*/
+
+data bool init_send_time;
+
+data uint16 fragment_identification;  //init
+
+method wrapped_frame(uint8 *buffer,uint32 buffer_length)
+{
+	local Afdx_Frame_Packet	afdx_frame_packet;
+
+	afdx_frame_packet.afdx_data.data = buffer;
+	afdx_frame_packet.afdx_data.length = buffer_length;
+	
+	call $packet_udp_header(&afdx_frame_packet.udp_header_structure);
+	call $packet_ip_header(&afdx_frame_packet.ip_header_structure);
+	call $packet_mac_header(&afdx_frame_packet.mac_header_structure);
+    log "info" : "=============send_frame_length================";	
+	call $send_frame_fragment(&afdx_frame_packet);
+}
+
+method packet_udp_header(Udp_Header_Structure *udp_header_structure)  
+{
+	local uint2 port_type = 0;
+	local uint16 source_udp_port = 0; 
+	local uint16 dest_udp_port = 0;
+	local uint16 udp_length = 0;
+	local uint13 fragment_offset =0;
+	local uint16 ipv4 = 0x800;
+	   
+	port_type = $transmit_cfg_ram_array[$tx_regs.tx_port_id.id].ram_data_part1.PORT_TYPE;  // 获取端口类型
+	source_udp_port = $transmit_cfg_ram_array[$tx_regs.tx_port_id.id].ram_data_part3.SOURCE_UDP_PORT;   // 获得源UDP
+	if (port_type == SAP_PORT)                                                                  // 获得目的UDP
+		dest_udp_port = $tx_regs.tx_dst_udp_addr.dst_udp_addr;
+	else 
+		dest_udp_port = $transmit_cfg_ram_array[$tx_regs.tx_port_id.id].ram_data_part3.DEST_UDP_PORT;
+		
+	udp_header_structure->UDP_SOURCE_ADDRESS = source_udp_port;
+	udp_header_structure->UDP_DESTINATION_ADDRESS = dest_udp_port;
+	udp_header_structure->UDP_LENGTH = UDP_HEADER_LENGTH + $tx_regs.tx_frame_len.frame_len;  
+	udp_header_structure->UDP_CHECKSUM = 0;
+	log "info" : "=====================udp packet========================";	
+	log "info" : "port_type = %x",port_type;	
+	log "info" : "source_udp_port = %x",source_udp_port;	
+	log "info" : "dest_udp_port = %x",dest_udp_port;	
+	log "info" : "udp_header_structure->UDP_SOURCE_ADDRESS = %x",udp_header_structure->UDP_SOURCE_ADDRESS;	
+	log "info" : "udp_header_structure->UDP_DESTINATION_ADDRESS = %x",udp_header_structure->UDP_DESTINATION_ADDRESS ;	
+	log "info" : "udp_header_structure->UDP_LENGTH = %x",udp_header_structure->UDP_LENGTH;	
+	log "info" : "udp_header_structure->UDP_CHECKSUM =%x",udp_header_structure->UDP_CHECKSUM ;	
+	log "info" : "=====================udp packet========================";	
+
+}
+
+method packet_ip_header(IP_Header_Structure *ip_header_structure)
+{
+	// 根据多播标示符进行判断，判断帧格式，这个地方没有对采样端口进行判断
+	local uint1 ip_multicast = 0;
+	
+	ip_multicast = $transmit_cfg_ram_array[$tx_regs.tx_port_id.id].ram_data_part1.IP_MULTICAST;    
+	//ip_header_structure->VERSION = 0x4; 
+	//ip_header_structure->IHL = 0x5;
+	ip_header_structure->VERSION_IHL = 0x4<<4 | 0x5;
+	ip_header_structure->TYPE_OF_SERVICE = 0;
+	ip_header_structure->TOTAL_LENGTH = IP_HEADER_LENGTH + UDP_HEADER_LENGTH + $tx_regs.tx_frame_len.frame_len;    // total_length = IP包头的长度 + 数据的长度(UDP 和 有效载荷)
+	ip_header_structure->FRAGMENT_IDENTIFICATION = ++$fragment_identification;
+	//ip_header_structure->CONTROL_FLAG =0 ;
+	//ip_header_structure->FRAGMENT_OFFSET = 0;
+	ip_header_structure->CONTROL_FRAGMENT = 0;
+	ip_header_structure->TIME_TO_LIVE = 0xff;
+	ip_header_structure->PROTOCAL = $transmit_cfg_ram_array[$tx_regs.tx_port_id.id].ram_data_part2.PROTOCAL_ID ;
+	ip_header_structure->HEADER_CHECKSUM = 0;
+	ip_header_structure->IP_SOURCE_ADDRESS = (0x0 << 31) | 
+	                                        (0xa << 24) | 
+											($transmit_cfg_ram_array[$tx_regs.tx_port_id.id].ram_data_part2.USER_DEFINED_ID << 8) |
+											($transmit_cfg_ram_array[$tx_regs.tx_port_id.id].ram_data_part2.PARTITION_ID);
+											
+	if (ip_multicast == UNICAST) {
+		ip_header_structure->IP_DESTINATION_ADDRESS = ip_header_structure->IP_SOURCE_ADDRESS;
+	} else {
+		ip_header_structure->IP_DESTINATION_ADDRESS = (0xe << 28) | (0xe0 << 16) | ($transmit_cfg_ram_array[$tx_regs.tx_port_id.id].ram_data_part1.VL_ID);    
+	}
+	
+	//ip check sum
+	//local uint16 ip_check_sum = 0; 
+	//call $ip_check_sum(cast(ip_header_structure, uint8*), IP_HEADER_LENGTH) -> (ip_check_sum);
+	//ip_header_structure->HEADER_CHECKSUM = ip_check_sum;	
+	
+		log "info" : "=====================ip packet========================";	
+		log "info" : "ip_multicast =%d",ip_multicast;	
+		log "info" : "ip_header_structure->VERSION_IHL=%x",ip_header_structure->VERSION_IHL;	
+		log "info" : "ip_header_structure->TYPE_OF_SERVICE =%x",ip_header_structure->TYPE_OF_SERVICE;	
+		log "info" : " ip_header_structure->TOTAL_LENGTH =%x",ip_header_structure->TOTAL_LENGTH ;	
+		log "info" : " ip_header_structure->FRAGMENT_IDENTIFICATION=%x",ip_header_structure->FRAGMENT_IDENTIFICATION;	
+		log "info" : " ip_header_structure->CONTROL_FRAGMENT =%x",ip_header_structure->CONTROL_FRAGMENT ;	
+		log "info" : " ip_header_structure->TIME_TO_LIVE=%x",ip_header_structure->TIME_TO_LIVE;	
+		log "info" : " ip_header_structure->PROTOCAL=%x",ip_header_structure->PROTOCAL;	
+		log "info" : " ip_header_structure->HEADER_CHECKSUM=%x",ip_header_structure->HEADER_CHECKSUM;	
+		log "info" : " ip_header_structure->IP_SOURCE_ADDRESS=%x",ip_header_structure->IP_SOURCE_ADDRESS;	
+		log "info" : " ip_header_structure->IP_DESTINATION_ADDRESS=%x",ip_header_structure->IP_DESTINATION_ADDRESS;	
+		log "info" : "=====================ip packet========================";	
+	
+}
+
+method packet_mac_header(MAC_Header_Structrue *mac_header_structure)    //mac header packet
+{
+	mac_header_structure->Destination_Address.CONSTANT_FIELD = 0x3000;
+	mac_header_structure->Destination_Address.VIRTUAL_LINK_IDENTIFER = $transmit_cfg_ram_array[$tx_regs.tx_port_id.id].ram_data_part1.VL_ID;
+	mac_header_structure->Source_Address.CONSTANT_FIELD = 0x200;
+	mac_header_structure->Source_Address.USER_DEFINED_ID = $transmit_cfg_ram_array[$tx_regs.tx_port_id.id].ram_data_part2.USER_DEFINED_ID;
+	
+	mac_header_structure->Source_Address.INTERFACE_CONSTANT = $transmit_cfg_ram_array[$tx_regs.tx_port_id.id].ram_data_part2.INTERFACE_ID ;
+	log "info" : "=====================mac packet========================";	
+	log "info" : "mac_header_structure->Destination_Address.CONSTANT_FIELD =%x",mac_header_structure->Destination_Address.CONSTANT_FIELD;	
+	log "info" : "mac_header_structure->Destination_Address.VIRTUAL_LINK_IDENTIFER =%x",mac_header_structure->Destination_Address.VIRTUAL_LINK_IDENTIFER;	
+	log "info" : "mac_header_structure->Source_Address.CONSTANT_FIELD =%x",mac_header_structure->Source_Address.CONSTANT_FIELD ;	
+	log "info" : "mac_header_structure->Source_Address.USER_DEFINED_ID  =%x",mac_header_structure->Source_Address.USER_DEFINED_ID ;	
+	log "info" : "mac_header_structure->Source_Address.INTERFACE_CONSTANT =%x",mac_header_structure->Source_Address.INTERFACE_CONSTANT ;		
+	log "info" : "=====================mac packet========================";	
+}
+
+method packet_data(Item *afdx_frame, Afdx_Frame_Packet* afdx_frame_packet,int first)
+{
+	local uint16 ipv4 = 0x800;
+	local uint32 memcpy_offset = 0;
+	local uint32 i;
+	local uint32 udp_offset;
+	
+	memcpy(afdx_frame->frame, &afdx_frame_packet->mac_header_structure, MAC_HEADER_LENGTH);
+	memcpy_offset += MAC_HEADER_LENGTH;
+	memcpy(afdx_frame->frame + memcpy_offset, &ipv4, IPV4_LENGTH);
+	memcpy_offset += IPV4_LENGTH;
+	
+	//ip checksum
+	local uint16 ip_check_sum = 0; 
+	afdx_frame_packet->ip_header_structure.TOTAL_LENGTH = IP_HEADER_LENGTH + UDP_HEADER_LENGTH + afdx_frame_packet->send_frame_packet.afdx_payload_length;
+	call $ip_check_sum(cast(&afdx_frame_packet->ip_header_structure, uint8*), IP_HEADER_LENGTH) -> (ip_check_sum);
+	
+	memcpy(afdx_frame->frame + memcpy_offset, &afdx_frame_packet->ip_header_structure, IP_HEADER_LENGTH);
+
+	memcpy_offset += IP_HEADER_LENGTH;
+	if(afdx_frame_packet->send_frame_packet.first == FIRST)
+	{
+		memcpy(afdx_frame->frame + memcpy_offset, &afdx_frame_packet->udp_header_structure, UDP_HEADER_LENGTH);
+		memcpy_offset += UDP_HEADER_LENGTH;		   
+		afdx_frame->size =afdx_frame_packet->send_frame_packet.header_length + UDP_HEADER_LENGTH + 
+					      afdx_frame_packet->send_frame_packet.afdx_payload_length;
+	}
+	else		   
+		afdx_frame->size =afdx_frame_packet->send_frame_packet.header_length + 
+						  afdx_frame_packet->send_frame_packet.afdx_payload_length;
+	
+	memcpy(afdx_frame->frame + memcpy_offset,
+		   afdx_frame_packet->afdx_data.data + afdx_frame_packet->send_frame_packet.udp_offset, 
+		   afdx_frame_packet->send_frame_packet.send_frame_length);
+
+	call $udp_check_sum(afdx_frame,afdx_frame_packet);
+}
+
+method send_frame_fragment(Afdx_Frame_Packet* afdx_frame_packet)
+{
+	local Item	afdx_frame;
+	memset(&afdx_frame, 0 ,sizeoftype(Item));	
+	
+	local int19 	min_frame_length = 0;    
+	local int19 	max_frame_length = 0;    
+	local int19 	send_frame_length = 0; 
+	local int19 	afdx_payload_length = 0;  
+	local int32 	header_length = 0;
+	local uint13 	fragment_offset = 0;
+	local uint32	i;
+	
+	afdx_frame_packet->send_frame_packet.first = 1;
+	
+	afdx_frame_packet->send_frame_packet.header_length = MAC_HEADER_LENGTH + IP_HEADER_LENGTH +  IPV4_LENGTH + SN_CRC_LENGTH;
+	header_length =  afdx_frame_packet->send_frame_packet.header_length ;
+	min_frame_length = $transmit_cfg_ram_array[$tx_regs.tx_port_id.id].ram_data_part1.MIN_FRAME_LENGTH - header_length;     // 获得UDP有效载荷的最小长度
+	max_frame_length = $fragment_cfg_ram_array[$tx_regs.tx_port_id.id].MAX_FRAME_LENGTH - header_length;     // 获得UDP有效载荷的最大长度
+   //min_frame_length =64 -header_length;
+  // max_frame_length = 1518 -header_length;
+	send_frame_length =afdx_frame_packet->udp_header_structure.UDP_LENGTH;  
+	afdx_frame_packet->send_frame_packet.udp_offset = 0;
+	log "info" : "=====================send frame fragment========================";	
+	log "info" : "10 afdx_frame_packet->send_frame_packet.header_length =%d",afdx_frame_packet->send_frame_packet.header_length;	
+	log "info" : "10 min_frame_length 1=%d",min_frame_length;	
+	log "info" : "10 min_frame_length 2=%d",$transmit_cfg_ram_array[$tx_regs.tx_port_id.id].ram_data_part1.MIN_FRAME_LENGTH;	
+	log "info" : "10 max_frame_length =%d",max_frame_length ;	
+	log "info" : "10 send_frame_length  =%d",send_frame_length;	
+	
+  
+	log "info" : "=====================send frame fragment========================";	
+	while(send_frame_length > 0)
+	{	
+		if(send_frame_length > max_frame_length) 
+		{
+				if(afdx_frame_packet->send_frame_packet.first ==FIRST)
+					afdx_frame_packet->send_frame_packet.afdx_payload_length = max_frame_length - UDP_HEADER_LENGTH;
+				else
+					afdx_frame_packet->send_frame_packet.afdx_payload_length = max_frame_length;
+				
+				afdx_frame_packet->send_frame_packet.send_frame_length=afdx_frame_packet->send_frame_packet.afdx_payload_length;	
+			    send_frame_length -= max_frame_length;	 
+				afdx_frame_packet->ip_header_structure.CONTROL_FRAGMENT = 1 << 13 | fragment_offset;
+				fragment_offset += max_frame_length % 8;
+		}
+		else if(send_frame_length < min_frame_length)	
+		{	
+			if(afdx_frame_packet->send_frame_packet.first==FIRST)
+			{
+				afdx_frame_packet->send_frame_packet.afdx_payload_length = min_frame_length - UDP_HEADER_LENGTH;
+				afdx_frame_packet->send_frame_packet.send_frame_length = send_frame_length - UDP_HEADER_LENGTH;
+			}
+			else
+			{
+				afdx_frame_packet->send_frame_packet.afdx_payload_length = min_frame_length;
+				afdx_frame_packet->send_frame_packet.send_frame_length = send_frame_length; 				
+			}
+			afdx_frame_packet->ip_header_structure.CONTROL_FRAGMENT = 0 ;  
+			send_frame_length =0;
+		}				
+		else
+		{
+			if(afdx_frame_packet->send_frame_packet.first==FIRST)
+				afdx_frame_packet->send_frame_packet.afdx_payload_length = send_frame_length - UDP_HEADER_LENGTH;
+			else
+				afdx_frame_packet->send_frame_packet.afdx_payload_length = send_frame_length;
+			afdx_frame_packet->send_frame_packet.send_frame_length=afdx_frame_packet->send_frame_packet.afdx_payload_length;
+			afdx_frame_packet->ip_header_structure.CONTROL_FRAGMENT = 0 ;  
+			send_frame_length =0;
+		}
+		
+		call $packet_data(&afdx_frame, afdx_frame_packet,afdx_frame_packet->send_frame_packet.first);
+		afdx_frame_packet->send_frame_packet.udp_offset += afdx_frame_packet->send_frame_packet.send_frame_length;
+		afdx_frame_packet->send_frame_packet.first = 0;
+		
+		//find vl
+		local uint8 vl_index = $transmit_cfg_ram_array[$tx_regs.tx_port_id.id].ram_data_part1.VL_INDEX;
+		local uint2 sub_vl_id = $transmit_cfg_ram_array[$tx_regs.tx_port_id.id].ram_data_part3.SUB_VL_ID;
+		
+        log "info" :"================enqueue vl=======================";
+		call $EnQueue(&($vl[vl_index].sub_queue[sub_vl_id]), afdx_frame);	
+		if (!$init_send_time) {
+		    call $init_event();
+			$init_send_time = true;
+	    }	
+	}	
+}
+
+method init_event() {
+	local uint8 k = 0;
+	for (; k < 128; ++k) {
+          log "info" : "event";
+		//inline $send_frame.post($scheduling_cfg_ram_array[k].BAG / 1000000, &k);
+		local dbuffer_t *dbuf = new_dbuffer();
+		local uint8 *index = dbuffer_append(dbuf, sizeoftype(uint8));
+		
+		*index = k;
+		inline $send_frame.post($scheduling_cfg_ram_array[k].BAG / 1000000, index);
+	}	
+}
+
+
+
+
+
+
+
+
+event send_frame {
+	method event(void *data) {
+	    local uint2 i; 
+		local uint8 vl_index;
+		vl_index = *cast(data, uint8*);
+		//log "info" : "vl_index =%d ", vl_index;
+	    local dbuffer_t *dbuf = new_dbuffer();
+		local uint8 *index = dbuffer_append(dbuf, sizeoftype(uint8));
+		*index = vl_index;
+	
+		for (i = $vl[vl_index].current_sub_id; i < 4; ++i) {
+		    if ((($vl[vl_index].valid_id >> $vl[vl_index].current_sub_id) & 0x1) == 0x1) {
+	           local Item item;
+				
+			  	
+			   call $DeQueue(&($vl[vl_index].sub_queue[$vl[vl_index].current_sub_id]), &item);
+		
+			   ++$vl[vl_index].current_sub_id;
+			   local double delay_time = 0;
+			
+			   if (item.size != 0) {
+			        delay_time = $scheduling_cfg_ram_array[vl_index].BAG / 1000000;
+					//delay_time = 0.5;  
+					/*
+				    local uint3 interface_id;
+				    memcpy(&interface_id, &item.frame[6 * 8 + 24 + 16], 3);
+					
+				    switch (interface_id) {     // ?????????????
+						case 1:    // send from A 
+							$phy0.data_exchange.send_frame(cast(&item.frame, uint8*), item.size);
+						    break;
+						case 2:   // send from B
+							$phy1.data_exchange.send_frame(cast(&item.frame, uint8*), item.size);
+						    break;
+						case 3:   // send from A and B
+							$phy0.data_exchange.send_frame(cast(&item.frame, uint8*), item.size);
+							$phy1.data_exchange.send_frame(cast(&item.frame, uint8*), item.size);
+						    break;
+				    }
+					*/
+					
+				  // item[item.size-5] = vl[vl_index].sn;
+				  // if ()
+				   // add sn to frame;
+				   // crc check
+				   // check interface ID
+				   // send to phy
+				   // ++$vl[vl_index].sn;
+				  // $vl[vl_index] %= 255;
+				   // send to phy
+				   log "info" : "VL send to phy";
+				  $phy0.data_exchange.send_frame(item.frame, item.size);
+				  // local Item item_test;
+				
+				 // $phy0.data_exchange.send_frame(test, 100);
+			   } else {
+			       delay_time = 0.5;
+			   }
+				/*
+			   local dbuffer_t *dbuf = new_dbuffer();
+			   local uint8 *pvl_index = dbuffer_append(dbuf, sizeoftype(uint8));
+			   *pvl_index = vl_index;
+			   */
+			   inline $send_frame.post(delay_time, index);
+			   //dbuffer_free(dbuf);
+			   
+			   break;
+		    } else {
+			    ++$vl[vl_index].current_sub_id;
+		   }
+		}	
+		$vl[vl_index].current_sub_id %= 4;
+	}
+}
+
+
+
+

@@ -1,0 +1,129 @@
+// Copyright 2005-2011 Virtutech AB
+dml 1.2;
+
+device afdxES2;
+
+
+parameter desc = "afdx End System";
+
+parameter documentation = "afdx End System";
+
+parameter byte_order = "little-endian"; 
+ 
+import "utility.dml";
+import "io-memory.dml";
+import "simics/devs/memory-space.dml";
+import "afdx-exchange.dml";
+import "interface.dml";
+import "config-tables.dml";
+import "vl.dml";
+import "constant.dml";
+import "unpacket_frame.dml";
+import "packet-frame.dml";
+import "afdxES-register.dml";
+
+connect data_exchange_action {
+	parameter documentation = "Send frame to RDC";
+	parameter configuration = "optional";
+	
+	interface Send_To_RDC {
+		parameter c_type = "Send_To_RDC_interface_t";
+	}
+}
+
+implement load_cfg_table {
+	
+	method load_analyse_cam_cfg_table(uint32 size, void *data) {
+		local uint32 item_num = size;    // notice
+		
+		memcpy($analyse_cfg_cam_array, data, item_num);
+		$analyse_cfg_cam_index = item_num;
+		call $cfg_table_regs.analyse_cfg_cam_addr.QuickSort($analyse_cfg_cam_array);
+		
+	}
+	
+	method load_analyse_ram_cfg_table(uint32 size, void *data) {
+		local uint32 item_num = size;
+		
+		memcpy($analyse_cfg_ram_array, data, item_num);
+	
+	}
+	
+	method load_transmit_ram_cfg_table(uint32 size, void *data) {
+		local uint32 item_num = size;
+		local uint32 i;
+		
+		memcpy($transmit_cfg_ram_array, data, item_num);
+		
+		for(i=0;i<1024;i++)
+			$vl[$transmit_cfg_ram_array[i].ram_data_part1.VL_INDEX].valid_id |= (1 << $transmit_cfg_ram_array[i].ram_data_part3.SUB_VL_ID);    //  确认哪些vl是有效的，在event遍历的时候会先判断
+			                                                                                               // SUB_VL_ID 是怎么取值的？
+		
+	}
+	
+	method load_scheduling_ram_cfg_table(uint32 size, void *data) {
+		local uint32 item_num = size;
+		
+		memcpy($scheduling_cfg_ram_array, data, item_num);
+	}
+	
+	method load_rm_cam_cfg_table(uint32 size, void *data) {
+		local uint32 item_num = size;
+		
+		memcpy($rm_cfg_cam_array, data, item_num);
+		call $cfg_table_regs.rm_cfg_cam_addr.QuickSort($rm_cfg_cam_array);
+	}
+	
+	method load_rm_ram_cfg_table(uint32 size, void *data) {
+		local uint32 item_num = size;
+		
+		memcpy($rm_cfg_ram_array, data, item_num);
+	}
+}
+
+//called by RDC
+implement Send_To_A664{
+	method send_to_A664(int port_id,void *data,int length)
+	{
+		$tx_regs.tx_port_id.id = port_id;
+        $tx_regs.tx_frame_len.frame_len=length;
+		call $wrapped_frame(data,length);
+	}
+}
+
+connect phy0 {
+	parameter documentation = "Send data to ARINC664 2";
+    parameter configuration = "optional";
+    interface data_exchange {
+        parameter c_type = "data_exchange_interface_t";
+    }
+}
+
+data uint8 sn; 
+// called by ARINC664
+implement data_exchange {
+	method send_frame(uint8 *data, uint32 size) {
+		log "info" : "called by nic1";
+		
+		local dbuffer_t *dbuf = new_dbuffer();
+		local uint8 *frame_buffer;
+		frame_buffer = dbuffer_append(dbuf, size);
+		
+		memcpy(frame_buffer, data, size);
+	
+	//the interface id will be used by redundant module  
+		local uint3 interface_id;
+		interface_id = data[11]>>5;
+		log "info" : "interace_id = %d", interface_id;
+		
+	call $unpacket_frame(data, size);
+	
+	//	$data_exchange_action.Send_To_RDC.send_to_RDC(data, dest_udp, size);
+		
+	}
+}
+
+method post_init()
+{
+   memset($udp_first,1,PORT_SIZE);
+}

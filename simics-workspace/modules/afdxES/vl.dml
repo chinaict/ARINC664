@@ -1,0 +1,13 @@
+dml 1.2;
+
+import "queue.dml";
+
+struct VL {
+	Queue sub_queue[4];   
+	uint4 valid_id;
+	uint2 current_sub_id;
+	uint8 sn;
+}
+
+data VL vl[128];
+

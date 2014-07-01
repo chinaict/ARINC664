@@ -1,0 +1,131 @@
+dml 1.2;
+
+import "config-tables.dml";
+import "constant.dml";
+import "packet-description.dml";
+
+//data Queue sub_vl_queue[512];   // 共 128个vl，每个vl最多有4个sub vl fifo，
+
+method InitPortQueue(PortQueue *queue) {
+    queue->front = 0;
+	queue->rear = 0;
+    memset(&queue->item, 0, ITEM_NUM);
+	queue->item_num = 0;
+	queue->frame_size = 0;
+}
+
+	
+method EnPortQueue(PortQueue *queue, UDP_Item item) {
+	local bool is_overflow;
+	inline $IsPortQueueOverflow(queue, item) -> (is_overflow);     // 这个接口也需要改一下
+	if (is_overflow) { 
+		log "info" : "Overflow!";
+	} else {
+	    if (item.udp_length == 0) {    // 如果长度为0，说明没有包含UDP头，它不是第一帧
+			memcpy((queue->item[queue->rear].frame + queue->item[queue->rear].offset),     // 获得item加上偏移后的地址， 
+			                                           item.buffer,                            // 获取存储数据的首地址
+												       item.udp_packet_size);                 // 传递过来的帧大小
+			queue->item[queue->rear].offset += item.udp_packet_size;                         // 更新offset
+		} else {    // 如果是第一帧	    
+			memcpy(&(queue->item[queue->rear].frame), item.buffer, item.udp_packet_size);      // 将 Item结构体复制到queue中对应的项
+			queue->item[queue->rear].size = item.udp_length;                                  // 如果是第一帧，需要赋这个值，其他帧则不需要
+			queue->item[queue->rear].offset = item.udp_packet_size;
+			queue->item[queue->rear].dest_ip = item.dest_ip;
+            queue->item[queue->rear].src_ip = item.src_ip; 		
+		   
+		    ++queue->item_num;  
+		    queue->frame_size += item.udp_length; 
+		}        		
+		
+		// 下面这个函数不需要进行判断
+		if (item.mf == 0) {			  //  更新是否是最后一帧
+            
+			local bool check_result;
+			inline $receive_udp_check_sum(queue->item[queue->rear]) -> (check_result);
+			queue->rear = (queue->rear + 1) % ITEM_NUM;
+			if (!check_result) {       // 如果校验失败           
+			    local PortItem port_item;
+				call $DePortQueue(queue, &port_item);                                               //  弹出此帧
+			}
+		}
+	}
+}
+	
+method DePortQueue(PortQueue *queue, PortItem *item) {
+    local bool is_empty;
+	inline $IsPortQueueEmpty(queue) -> (is_empty);
+	if (is_empty) {
+		log "info" : "The fifo is empty";
+	} else {
+		memcpy(&(item->frame), &(queue->item[queue->front]), sizeoftype(Item)); // 将 queue中的front项存储在结构体中并返回
+		queue->front = (queue->front + 1) % ITEM_NUM;
+		--queue->item_num;
+		queue->frame_size -= item->size;
+	}
+}
+	
+method IsPortQueueEmpty(PortQueue *queue) -> (bool result) {
+	result = queue->front == queue->rear;
+}
+	
+method SetPortQueueEmpty(PortQueue *queue) {
+	InitPortQueue(queue);
+}
+
+method PortQueueLength(PortQueue *queue) -> (uint32 length) {
+	length = queue->item_num;
+}
+
+method IsPortQueueOverflow(PortQueue *queue, UDP_Item item) -> (bool result) {
+	if ((queue->frame_size + item.udp_length) > FIFO_SIZE) { // 现在已经有的frame_size + item.size > 8K 则溢出
+		// 设置相应的MIB寄存器
+		result = true;    
+	} else {
+		result = false;
+	}
+}
+
+method IsPortQueueFull(PortQueue *queue) -> (bool result) {   // 如果有overflow的话，这个函数还有调用的必要吗？
+	result = (queue->rear + 1) % ITEM_NUM == queue->front; 
+}
+
+
+method RefreshPortData(Receive_Port *port, UDP_Item udp_item) {
+	port->port_type = 2;
+	
+	if (port->frame != NULL) {
+		dbuffer_free(port->dbuf);
+	}
+	
+	port->dbuf = new_dbuffer();
+	port->frame = dbuffer_append(port->dbuf, udp_item.udp_length);
+	
+	memcpy(port->frame, udp_item.buffer, udp_item.udp_length);
+	$pciport.rx_sampling_port_freshness = 0;  // 新鲜的
+}
+
+
+method IsPortSampleEmpty(Receive_Port *port) -> (bool result) {
+	if (port->frame == NULL) {
+		result = true;
+	} else {
+		result = false;
+	}
+}
+
+
+struct Receive_Port {
+    uint2 port_type;       // 如果是SAP或FIFO，则使用queue，否则使用queue
+	PortQueue queue;
+	dbuffer_t *dbuf;
+	uint8 *frame;
+}
+
+/*
+data Receive_Port port0[32];
+data Receive_Port port1[32];
+data Receive_Port port2[32];
+data Receive_Port port3[32];
+*/
+
+data Receive_Port port[128];
