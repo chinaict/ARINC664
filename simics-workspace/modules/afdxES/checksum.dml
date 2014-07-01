@@ -26,7 +26,7 @@ method udp_check_sum(Item *afdx_frame, Afdx_Frame_Packet* afdx_frame_packet)
 		*udp_check_in_afdx = udp_checksum;
 }
 
-method receive_udp_check_sum(PortItem port_item)->(bool result)
+method receive_udp_check_sum(PortQueue* queue)->(bool result)
 {
 		local uint32 sum =0;
 		local uint32 i=0;
@@ -35,6 +35,21 @@ method receive_udp_check_sum(PortItem port_item)->(bool result)
 		local uint16 udp_check_in_item;
 		local uint16* address;
 		local uint16* checksum_data;
+		local PortItem port_item;
+		local QueueItem *checksumitem;
+		local uint32 offset = 0;
+		
+		checksumitem = queue->tail->prev_whole->next;
+		port_item.dest_ip = checksumitem->dest_ip;
+		port_item.src_ip = checksumitem->src_ip;
+		port_item.size = checksumitem->whole_size;
+		port_item.frame = new uint8[checksumitem->whole_size];
+		while(checksumitem)
+		{
+			memcpy(port_item.frame+offset,checksumitem->buffer,checksumitem->single_size);
+			offset += checksumitem->single_size;
+			checksumitem = checksumitem->next;
+		}
 
 		old_udp_checksum = *cast(port_item.frame+UDP_CHECKSUM_OFFSET,uint16 *);
 		*cast(port_item.frame+UDP_CHECKSUM_OFFSET,uint16 *) = 0;
