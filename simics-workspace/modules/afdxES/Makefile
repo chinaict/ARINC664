@@ -9,6 +9,8 @@ SRC_FILES =
 DML_FILES = afdxES.dml
 DMLC_FLAGS = -m -I$(SIMICS_WORKSPACE)/include
 
+MODULE_LDFLAGS=-lws2_32
+
 SIMICS_API := 4.6
 THREAD_SAFE := yes
 

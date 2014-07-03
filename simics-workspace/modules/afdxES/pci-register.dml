@@ -904,10 +904,22 @@ bank pciport{
 		{
 		    log "info" ,2: "before write_analyse_cam##########################################################";
 			log "info" ,2:"analyse_cfg_cam_addr =%x",$this;
-            call $write_analyse_cam();
-			log "info"  ,2: "Method write_analyse_cam has been called";
-			call $QuickSort($analyse_cfg_cam_array);
-			log "info"  ,2: "Method QuickSort has been called";
+            if ($mode == 0) {
+                call $write_analyse_cam();
+                log "info"  ,2: "Method write_analyse_cam has been called";
+                call $QuickSort($analyse_cfg_cam_array);
+                log "info"  ,2: "Method QuickSort has been called";                
+            } else {
+                local uint32 length = 4 * 4;
+                local uint8 *data = new uint8[length];
+                memcpy(data, &$analyse_cfg_cam_data1, sizeoftype(uint32));
+                memcpy(data + 4, &$analyse_cfg_cam_data2, sizeoftype(uint32));
+                local uint32 analyse_cam_data3 = ($analyse_cfg_cam_data3.ICMP_TYPE_ID << 1) | ($analyse_cfg_cam_data3.MULTICAST_ID);
+                memcpy(data + 8, &$analyse_cam_data3, sizeoftype(uint32));
+                memcpy(data + 12, &$this, sizeoftype(uint32));
+                call $send_to_middleware(data, length); // 在开头需要添加一个协议头
+                delete  data; // notice
+            }
         }
         
         method write_analyse_cam() 
@@ -1043,8 +1055,18 @@ bank pciport{
 		{
 		    log "info" ,2: "write analyse_cfg_ram_addr ";
 			log "info" ,2:"analyse_cfg_ram_addr = %x",$this;
-		
-            call $write_analyse_ram();
+
+            if ($mode == 0) {
+                call $write_analyse_ram();
+            } else {
+                local uint32 length = 4 * 2;
+                local uint8 *data = new uint8[length];
+                local uint32 analyse_ram_data = ($analyse_cfg_ram_data.NETWORK_B_ENABLE << 3) | ($analyse_cfg_ram_data.NETWORK_A_ENABLE << 2) | ($analyse_cfg_ram_data.PORT_TYPE);
+                memcpy(data, &analyse_ram_data, sizeoftype(uint32));
+                memcpy(data + 4, &$this, sizeoftype(uint32));
+                call $send_to_middleware(data, length); // 在开头需要添加一个协议头，至少需要标注配置表类型
+                delete data; // notice
+            }
         }
         
         method write_analyse_ram() 
@@ -1117,9 +1139,25 @@ bank pciport{
 		{
 		    log "info" ,2: "write transmit_cfg_ram_addr ";
 			log "info", 2: "transmit_cfg_ram_addr=%x",$this;
-			call $print_transfer();
-            call $write_transmit_ram();
-			call $print_transfer_table();
+            if ($mode == 0) {
+                call $print_transfer();
+                call $write_transmit_ram();
+                call $print_transfer_table();                
+            } else {
+                local uint32 length = 4 * 5;
+                local uint8 *data = new uint8[length];
+                local uint32 transmit_ram_data1 = ($transmit_cfg_ram_data1.SOURCE_UDP_PORT_PART1 << 18) | ($transmit_cfg_ram_data1.DEST_UDP_PORT << 2) | ($transmit_cfg_ram_data1.SUB_VL_ID);
+                memcpy(data, &transmit_ram_data1, sizeoftype(uint32));
+                local uint32 transmit_ram_data2 = ($transmit_cfg_ram_data2.USER_DEFINED_ID_PART1 << 18) | ($transmit_cfg_ram_data2.PROTOCAL_ID << 10) | ($transmit_cfg_ram_data2.INTERFACE_ID << 7) | ($transmit_cfg_ram_data2.PARTITION_ID << 2) | ($transmit_cfg_ram_data2.SOURCE_UDP_PORT_PART2);
+                memcpy(data + 4, &transmit_ram_data2, sizeoftype(uint32));
+                local uint32 transmit_ram_data3 = ($transmit_cfg_ram_data3.MIN_FRAME_LENGTH_PART1 << 27) | ($transmit_cfg_ram_data3.IP_MULTICAST << 26) | ($transmit_cfg_ram_data3.VL_INDEX << 18) | ($transmit_cfg_ram_data3.VL_ID << 2) | ($transmit_cfg_ram_data3.USER_DEFINED_ID_PART2);
+                memcpy(data + 8, &transmit_ram_data3, sizeoftype(uint32));
+                local uint32 transmit_ram_data4 = ($transmit_cfg_ram_data4.PORT_TYPE << 6) | ($transmit_cfg_ram_data4.MIN_FRAME_LENGTH_PART2);
+                memcpy(data + 12, &transmit_ram_data4, sizeoftype(uint32));
+                memcpy(data + 16, &$this, sizeoftype(uint32));
+                call $send_to_middleware(data, length); // 在开头需要添加一个协议头，至少需要标注配置表类型
+                delete data; // notice
+            }
         }
         
         method write_transmit_ram() 
@@ -1168,9 +1206,19 @@ bank pciport{
 	{
         method after_write(memop) 
 		{
-		    log "info" ,2: "write scheduling_cfg_addr";
-			log "info" ,2:"scheduling_cfg_addr = %x",$this;
-            call $write_scheduling_ram();
+            if ($mode == 0) {
+                log "info" ,2: "write scheduling_cfg_addr";
+                log "info" ,2:"scheduling_cfg_addr = %x",$this;
+                call $write_scheduling_ram();                
+            } else {
+                local uint32 length = 4 * 2;
+                local uint8 *data = new uint8[length];
+                local uint32 scheduling_data = $scheduling_cfg_data.BAG;
+                memcpy(data, &scheduling_data, sizeoftype(uint32));
+                memcpy(data + 4, &$this, sizeoftype(uint32));
+                call $send_to_middleware(data, length); // 在开头需要添加一个协议头，至少需要标注配置表类型
+                delete data; // notice
+            }
         }
 
         method write_scheduling_ram() 
@@ -1183,13 +1231,21 @@ bank pciport{
 	{
         method after_write(memop) 
 		{
-			log "info" ,2:"rm_cfg_cam_addr";
-			log "info":"rm_cfg_cam_addr = %x",$this;
-			$count++;
-			log "info": "write rm %d times", $count;
-            call $write_rm_cam();
-			call $QuickSort($rm_cfg_cam_array);
-			call $print_transfer_table();
+            if ($mode == 0) {
+                log "info" ,2:"rm_cfg_cam_addr";
+                log "info":"rm_cfg_cam_addr = %x",$this;
+                call $write_rm_cam();
+                call $QuickSort($rm_cfg_cam_array);
+                call $print_transfer_table();                
+            } else {
+                local uint32 length = 4 * 2;
+                local uint8 *data = new uint8[length];
+                local uint32 rm_cam_data = $rm_cfg_cam_data.VL_ID;
+                memcpy(data, &rm_cam_data, sizeoftype(uint32));
+                memcpy(data + 4, &$this, sizeoftype(uint32));
+                call $send_to_middleware(data, length); // 在开头需要添加一个协议头，至少需要标注配置表类型
+                delete data; // 不知道是否支持这样的语法                
+            }
         }
 
         method write_rm_cam() 
@@ -1279,11 +1335,21 @@ bank pciport{
 	{
         method after_write(memop) 
 		{
-			log "info" ,2:"rm_cfg_ram_addr";
-			log "info" ,2: "rm_cfg_ram_addr = %x",$this;
-            call $write_rm_ram();
-			
+            if ($mode == 0)  {
+                log "info" ,2:"rm_cfg_ram_addr";
+                log "info" ,2: "rm_cfg_ram_addr = %x",$this;
+                call $write_rm_ram();                
+            } else {
+                local uint32 length = 4 * 2;
+                local uint8 *data = new uint8[length];
+                local uint32 rm_ram_data = ($rm_cfg_ram_data.VL_ENABLE << 26) | ($rm_cfg_ram_data.SKEW_MAX << 5) | ($rm_cfg_ram_data.RM_ENABLE << 4) | ($rm_cfg_ram_data.NETWORK_B_IC_ENABLE << 3) | ($rm_cfg_ram_data.NETWORK_A_IC_ENABLE << 2) | ($rm_cfg_ram_data.NETWORK_B_ENABLE << 1) | ($rm_cfg_ram_data.NETWORK_A_ENABLE);
+                memcpy(data, &rm_ram_data, sizeoftype(uint32));
+                memcpy(data + 4, &$this, sizeoftype(uint32));
+                call $send_to_middleware(data, length); // 在开头需要添加一个协议头，至少需要标注配置表类型
+                delete  data; // notice
+            }
         }
+        
         method write_rm_ram() 
 		{
 		   //log "info" : "?????????????????????The value is %x", $this;
@@ -1302,7 +1368,6 @@ bank pciport{
                 NETWORK_B_ENABLE = $rm_cfg_ram_data.NETWORK_B_ENABLE;
             $rm_cfg_ram_array[$this].ram_data.
                 NETWORK_A_ENABLE = $rm_cfg_ram_data.NETWORK_A_ENABLE;   
-			
         }
     }
 
@@ -1310,10 +1375,20 @@ bank pciport{
 	{
         method after_write(memop) 
 		{
-			log "info", 2:"fragment_cfg_addr";
-			log "info" ,2: "fragment_cfg_addr = %x",$this;
-            call $write_fragment_ram();
-			      
+            if ($mode == 0) {
+                log "info", 2:"fragment_cfg_addr";
+                log "info" ,2: "fragment_cfg_addr = %x",$this;
+                call $write_fragment_ram();                
+            } else {
+                local uint32 length = 4 * 2;
+                local uint8 *data = new uint8[length];
+                local uint32 fragment_ram_data = $fragment_cfg_data.MAX_FRAME_LENGTH;
+                memcpy(data, &fragment_ram_data, sizeoftype(uint32));
+                memcpy(data + 4, &$this, sizeoftype(uint32));
+                call $send_to_middleware(data, length); // 在开头需要添加一个协议头，至少需要标注配置表类型
+                delete data; // notice
+            }
+
         }
 
         method write_fragment_ram() 
@@ -1483,6 +1558,10 @@ bank pciport{
 	}
 	
 }	
+
+method send_to_middleware(uint8 *data, int length) {
+    socket_send(data, length);
+}
 
 
 /*
