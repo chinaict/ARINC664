@@ -37,7 +37,6 @@ method transmit() {
             log "error": "tr Read data from memory fail";
         }
 		log "info",2,0: "wrap frame";
-		call $wrapped_frame(cast($pci9056.dmaladr1.ladr1,uint8 *), length);
         // the name of connector line 90 add ".memory_space.asscee_simple()"
         exn = $local_space.memory_space.access_simple($dev.obj,
                                                 $pci9056.dmaladr1.ladr1,
@@ -48,6 +47,12 @@ method transmit() {
     
         if (exn != Sim_PE_No_Exception) {
             log "error": "tr unknown exception (%d) on local space write", cast (exn, int);
+        }
+
+        if ($mode == 0) {
+            call $wrapped_frame(buf, length);
+        } else {
+            call $send_to_middleware(buf, length); //  这个地方想一下，是否需要增加一些信息
         }
 		
         log "info",2,0: "tr set DMA done status";

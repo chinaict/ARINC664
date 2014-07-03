@@ -1,0 +1,394 @@
+diff --git a/simics-workspace/modules/afdxES/Makefile b/simics-workspace/modules/afdxES/Makefile
+index 994fe54..80acbd0 100644
+--- a/simics-workspace/modules/afdxES/Makefile
++++ b/simics-workspace/modules/afdxES/Makefile
+@@ -9,6 +9,8 @@ SRC_FILES =
+ DML_FILES = afdxES.dml
+ DMLC_FLAGS = -m -I$(SIMICS_WORKSPACE)/include
+ 
++MODULE_LDFLAGS=-lws2_32
++
+ SIMICS_API := 4.6
+ THREAD_SAFE := yes
+ 
+diff --git a/simics-workspace/modules/afdxES/afdxES.dml b/simics-workspace/modules/afdxES/afdxES.dml
+index 18fdba0..8aede1b 100644
+--- a/simics-workspace/modules/afdxES/afdxES.dml
++++ b/simics-workspace/modules/afdxES/afdxES.dml
+@@ -20,6 +20,103 @@ import "pci-action.dml";
+ import "pci-register.dml";
+ //import "afdxES-register.dml";
+ 
++
++header %{
++    #include <stdio.h>
++    #include <string.h>
++    #include <stdlib.h>
++    #include <errno.h>
++    #include <unistd.h>
++    #include <WINSOCK2.H>
++
++    SOCKET client_socket;
++
++    extern int socket_init(void);
++    extern int socket_recv(unsigned char *recvbuf, int size);
++    extern int socket_send(unsigned char *sendbuf, int size);
++%}
++
++extern int socket_init(void);
++extern int socket_recv(char *recvbuf, int size);
++extern int socket_send(char *sendbuf, int size);
++
++footer %{
++    int socket_init(void) {
++        WSADATA wsa;
++
++        if (WSAStartup(MAKEWORD(2,2), &wsa)) {
++            fprintf(stderr, "WSAStartup failed, error code is %d.\n", WSAGetLastError());
++            return -1;
++        }
++
++        client_socket = socket(AF_INET, SOCK_STREAM , 0);    
++
++        if (client_socket  == INVALID_SOCKET) {
++            fprintf(stderr, "Create socket failed, error code is %d.\n", WSAGetLastError());
++            return -1;
++        }
++
++        SOCKADDR_IN serveraddr;   
++        memset(&serveraddr, 0, sizeof(serveraddr));
++        serveraddr.sin_family = AF_INET;
++        serveraddr.sin_port = htons(9750);
++        serveraddr.sin_addr.S_un.S_addr = inet_addr("127.0.0.1");   
++
++        if (connect(client_socket, (struct sockaddr *) &serveraddr, sizeof(serveraddr)) != 0) {
++            fprintf(stderr, "Connect failed, error code is %d.\n", WSAGetLastError());
++            return -1;
++        }
++
++        fprintf(stdout, "Socket_init ok\n");
++
++        return 0;
++    }
++
++    int socket_send(unsigned char *sendbuf, int size) {
++        int len = send(client_socket, (char *)sendbuf, size, 0);
++
++        if (len == size) {
++            fprintf(stdout, "Socket send sucessfully, send %d bytes.\n", len);
++            return len;
++        } else {
++            fprintf(stderr, "Socket send failed, size = %d, sended len = %d!\n", size, len);
++            return 0;
++        }
++    }
++
++    int socket_recv(unsigned char *recvbuf, int size) {
++        fd_set rfds;
++        FD_ZERO(&rfds);                
++        FD_SET(client_socket, &rfds);  
++
++        struct timeval tv = {0};             
++
++        int retval = select(0, &rfds, NULL, NULL, &tv);   
++        if (retval == -1) {
++            fprintf(stderr, "Socket recv select failed, error code is %d\n.", WSAGetLastError());
++            return -1;
++        }
++        else if (retval == 0) {
++            return 0;
++        } else {
++            int len = 0;
++
++            if (FD_ISSET(client_socket, &rfds)) {
++                memset(recvbuf, 0, size);
++
++                len = recv(client_socket, (char *)recvbuf, size, 0);
++                if (len == size) {
++                    fprintf(stdout, "Socket recv sucessfully!\n", WSAGetLastError());
++                } else {
++                    fprintf("Socket recv failed, error code is %d.\n", WSAGetLastError());
++                }
++            }
++
++            return len;
++        }
++    }
++%}
++
+ connect local_space 
+ {
+     parameter documentation = "The local-space the device uses to send/receive"
+@@ -51,6 +148,33 @@ implement data_exchange
+ }
+ 
+ 
++attribute mode "Used to switch work mode" { // 0 and 1
++    parameter allocate_type = "uint32";
++}
++
++method socket_loop_recv() {
++    local int length;
++    local uint8 *buf = new uint8 [PORT_DATA_SIZE];
++    length = socket_recv(buf, PORT_DATA_SIZE);
++    
++    if (length > 0) {
++        local exception_type_t exn;
++		exn = $local_space.memory_space.access_simple($dev.obj,
++                                                      $pci9056.dmaladr0.ladr0,
++                                                      buf,
++                                                      length,
++                                                      Sim_RW_Write,Sim_Endian_Target);
++        
++        log "info", 4 : "Read from the port cache, then write to local space";
++        if (exn != Sim_PE_No_Exception) 
++            log "error": "unknown exception (%d) on local space read", cast (exn, int);
++
++        delete buf;             // notice
++    } else {
++        after (1) call $socket_loop_recv();
++    }
++}
++
+ // USER-TODO: Add init() and post_init() methods here, if needed.
+ // init() will be run to set the empty state of the model, before any
+ // configuration or checkpointed attributes are set.  post_init() is run after
+@@ -60,5 +184,9 @@ implement data_exchange
+ method post_init() 
+ {
+ 	call $pci_config.update_all_mappings();   //测试需要，暂时先注释掉
+-    memset($udp_first,1,PORT_SIZE);	
++    memset($udp_first,1,PORT_SIZE);
++    if ($mode == 1) {
++        socket_init();
++        call $socket_loop_recv();
++    }
+ }
+diff --git a/simics-workspace/modules/afdxES/pci-action.dml b/simics-workspace/modules/afdxES/pci-action.dml
+index bdcc3e6..0262f9c 100644
+--- a/simics-workspace/modules/afdxES/pci-action.dml
++++ b/simics-workspace/modules/afdxES/pci-action.dml
+@@ -37,7 +37,6 @@ method transmit() {
+             log "error": "tr Read data from memory fail";
+         }
+ 		log "info",2,0: "wrap frame";
+-		call $wrapped_frame(cast($pci9056.dmaladr1.ladr1,uint8 *), length);
+         // the name of connector line 90 add ".memory_space.asscee_simple()"
+         exn = $local_space.memory_space.access_simple($dev.obj,
+                                                 $pci9056.dmaladr1.ladr1,
+@@ -49,6 +48,12 @@ method transmit() {
+         if (exn != Sim_PE_No_Exception) {
+             log "error": "tr unknown exception (%d) on local space write", cast (exn, int);
+         }
++
++        if ($mode == 0) {
++            call $wrapped_frame(buf, length);
++        } else {
++            call $send_to_middleware(buf, length); //  这个地方想一下，是否需要增加一些信息
++        }
+ 		
+         log "info",2,0: "tr set DMA done status";
+         // set interrupt pin and raise pci interrupt
+diff --git a/simics-workspace/modules/afdxES/pci-register.dml b/simics-workspace/modules/afdxES/pci-register.dml
+index 442e4f1..774f5f1 100644
+--- a/simics-workspace/modules/afdxES/pci-register.dml
++++ b/simics-workspace/modules/afdxES/pci-register.dml
+@@ -904,10 +904,22 @@ bank pciport{
+ 		{
+ 		    log "info" ,2: "before write_analyse_cam##########################################################";
+ 			log "info" ,2:"analyse_cfg_cam_addr =%x",$this;
+-            call $write_analyse_cam();
+-			log "info"  ,2: "Method write_analyse_cam has been called";
+-			call $QuickSort($analyse_cfg_cam_array);
+-			log "info"  ,2: "Method QuickSort has been called";
++            if ($mode == 0) {
++                call $write_analyse_cam();
++                log "info"  ,2: "Method write_analyse_cam has been called";
++                call $QuickSort($analyse_cfg_cam_array);
++                log "info"  ,2: "Method QuickSort has been called";                
++            } else {
++                local uint32 length = 4 * 4;
++                local uint8 *data = new uint8[length];
++                memcpy(data, &$analyse_cfg_cam_data1, sizeoftype(uint32));
++                memcpy(data + 4, &$analyse_cfg_cam_data2, sizeoftype(uint32));
++                local uint32 analyse_cam_data3 = ($analyse_cfg_cam_data3.ICMP_TYPE_ID << 1) | ($analyse_cfg_cam_data3.MULTICAST_ID);
++                memcpy(data + 8, &$analyse_cam_data3, sizeoftype(uint32));
++                memcpy(data + 12, &$this, sizeoftype(uint32));
++                call $send_to_middleware(data, length); // 在开头需要添加一个协议头
++                delete  data; // notice
++            }
+         }
+         
+         method write_analyse_cam() 
+@@ -1043,8 +1055,18 @@ bank pciport{
+ 		{
+ 		    log "info" ,2: "write analyse_cfg_ram_addr ";
+ 			log "info" ,2:"analyse_cfg_ram_addr = %x",$this;
+-		
+-            call $write_analyse_ram();
++
++            if ($mode == 0) {
++                call $write_analyse_ram();
++            } else {
++                local uint32 length = 4 * 2;
++                local uint8 *data = new uint8[length];
++                local uint32 analyse_ram_data = ($analyse_cfg_ram_data.NETWORK_B_ENABLE << 3) | ($analyse_cfg_ram_data.NETWORK_A_ENABLE << 2) | ($analyse_cfg_ram_data.PORT_TYPE);
++                memcpy(data, &analyse_ram_data, sizeoftype(uint32));
++                memcpy(data + 4, &$this, sizeoftype(uint32));
++                call $send_to_middleware(data, length); // 在开头需要添加一个协议头，至少需要标注配置表类型
++                delete data; // notice
++            }
+         }
+         
+         method write_analyse_ram() 
+@@ -1117,9 +1139,25 @@ bank pciport{
+ 		{
+ 		    log "info" ,2: "write transmit_cfg_ram_addr ";
+ 			log "info", 2: "transmit_cfg_ram_addr=%x",$this;
+-			call $print_transfer();
+-            call $write_transmit_ram();
+-			call $print_transfer_table();
++            if ($mode == 0) {
++                call $print_transfer();
++                call $write_transmit_ram();
++                call $print_transfer_table();                
++            } else {
++                local uint32 length = 4 * 5;
++                local uint8 *data = new uint8[length];
++                local uint32 transmit_ram_data1 = ($transmit_cfg_ram_data1.SOURCE_UDP_PORT_PART1 << 18) | ($transmit_cfg_ram_data1.DEST_UDP_PORT << 2) | ($transmit_cfg_ram_data1.SUB_VL_ID);
++                memcpy(data, &transmit_ram_data1, sizeoftype(uint32));
++                local uint32 transmit_ram_data2 = ($transmit_cfg_ram_data2.USER_DEFINED_ID_PART1 << 18) | ($transmit_cfg_ram_data2.PROTOCAL_ID << 10) | ($transmit_cfg_ram_data2.INTERFACE_ID << 7) | ($transmit_cfg_ram_data2.PARTITION_ID << 2) | ($transmit_cfg_ram_data2.SOURCE_UDP_PORT_PART2);
++                memcpy(data + 4, &transmit_ram_data2, sizeoftype(uint32));
++                local uint32 transmit_ram_data3 = ($transmit_cfg_ram_data3.MIN_FRAME_LENGTH_PART1 << 27) | ($transmit_cfg_ram_data3.IP_MULTICAST << 26) | ($transmit_cfg_ram_data3.VL_INDEX << 18) | ($transmit_cfg_ram_data3.VL_ID << 2) | ($transmit_cfg_ram_data3.USER_DEFINED_ID_PART2);
++                memcpy(data + 8, &transmit_ram_data3, sizeoftype(uint32));
++                local uint32 transmit_ram_data4 = ($transmit_cfg_ram_data4.PORT_TYPE << 6) | ($transmit_cfg_ram_data4.MIN_FRAME_LENGTH_PART2);
++                memcpy(data + 12, &transmit_ram_data4, sizeoftype(uint32));
++                memcpy(data + 16, &$this, sizeoftype(uint32));
++                call $send_to_middleware(data, length); // 在开头需要添加一个协议头，至少需要标注配置表类型
++                delete data; // notice
++            }
+         }
+         
+         method write_transmit_ram() 
+@@ -1168,9 +1206,19 @@ bank pciport{
+ 	{
+         method after_write(memop) 
+ 		{
+-		    log "info" ,2: "write scheduling_cfg_addr";
+-			log "info" ,2:"scheduling_cfg_addr = %x",$this;
+-            call $write_scheduling_ram();
++            if ($mode == 0) {
++                log "info" ,2: "write scheduling_cfg_addr";
++                log "info" ,2:"scheduling_cfg_addr = %x",$this;
++                call $write_scheduling_ram();                
++            } else {
++                local uint32 length = 4 * 2;
++                local uint8 *data = new uint8[length];
++                local uint32 scheduling_data = $scheduling_cfg_data.BAG;
++                memcpy(data, &scheduling_data, sizeoftype(uint32));
++                memcpy(data + 4, &$this, sizeoftype(uint32));
++                call $send_to_middleware(data, length); // 在开头需要添加一个协议头，至少需要标注配置表类型
++                delete data; // notice
++            }
+         }
+ 
+         method write_scheduling_ram() 
+@@ -1183,13 +1231,21 @@ bank pciport{
+ 	{
+         method after_write(memop) 
+ 		{
+-			log "info" ,2:"rm_cfg_cam_addr";
+-			log "info":"rm_cfg_cam_addr = %x",$this;
+-			$count++;
+-			log "info": "write rm %d times", $count;
+-            call $write_rm_cam();
+-			call $QuickSort($rm_cfg_cam_array);
+-			call $print_transfer_table();
++            if ($mode == 0) {
++                log "info" ,2:"rm_cfg_cam_addr";
++                log "info":"rm_cfg_cam_addr = %x",$this;
++                call $write_rm_cam();
++                call $QuickSort($rm_cfg_cam_array);
++                call $print_transfer_table();                
++            } else {
++                local uint32 length = 4 * 2;
++                local uint8 *data = new uint8[length];
++                local uint32 rm_cam_data = $rm_cfg_cam_data.VL_ID;
++                memcpy(data, &rm_cam_data, sizeoftype(uint32));
++                memcpy(data + 4, &$this, sizeoftype(uint32));
++                call $send_to_middleware(data, length); // 在开头需要添加一个协议头，至少需要标注配置表类型
++                delete data; // 不知道是否支持这样的语法                
++            }
+         }
+ 
+         method write_rm_cam() 
+@@ -1279,11 +1335,21 @@ bank pciport{
+ 	{
+         method after_write(memop) 
+ 		{
+-			log "info" ,2:"rm_cfg_ram_addr";
+-			log "info" ,2: "rm_cfg_ram_addr = %x",$this;
+-            call $write_rm_ram();
+-			
++            if ($mode == 0)  {
++                log "info" ,2:"rm_cfg_ram_addr";
++                log "info" ,2: "rm_cfg_ram_addr = %x",$this;
++                call $write_rm_ram();                
++            } else {
++                local uint32 length = 4 * 2;
++                local uint8 *data = new uint8[length];
++                local uint32 rm_ram_data = ($rm_cfg_ram_data.VL_ENABLE << 26) | ($rm_cfg_ram_data.SKEW_MAX << 5) | ($rm_cfg_ram_data.RM_ENABLE << 4) | ($rm_cfg_ram_data.NETWORK_B_IC_ENABLE << 3) | ($rm_cfg_ram_data.NETWORK_A_IC_ENABLE << 2) | ($rm_cfg_ram_data.NETWORK_B_ENABLE << 1) | ($rm_cfg_ram_data.NETWORK_A_ENABLE);
++                memcpy(data, &rm_ram_data, sizeoftype(uint32));
++                memcpy(data + 4, &$this, sizeoftype(uint32));
++                call $send_to_middleware(data, length); // 在开头需要添加一个协议头，至少需要标注配置表类型
++                delete  data; // notice
++            }
+         }
++        
+         method write_rm_ram() 
+ 		{
+ 		   //log "info" : "?????????????????????The value is %x", $this;
+@@ -1302,7 +1368,6 @@ bank pciport{
+                 NETWORK_B_ENABLE = $rm_cfg_ram_data.NETWORK_B_ENABLE;
+             $rm_cfg_ram_array[$this].ram_data.
+                 NETWORK_A_ENABLE = $rm_cfg_ram_data.NETWORK_A_ENABLE;   
+-			
+         }
+     }
+ 
+@@ -1310,10 +1375,20 @@ bank pciport{
+ 	{
+         method after_write(memop) 
+ 		{
+-			log "info", 2:"fragment_cfg_addr";
+-			log "info" ,2: "fragment_cfg_addr = %x",$this;
+-            call $write_fragment_ram();
+-			      
++            if ($mode == 0) {
++                log "info", 2:"fragment_cfg_addr";
++                log "info" ,2: "fragment_cfg_addr = %x",$this;
++                call $write_fragment_ram();                
++            } else {
++                local uint32 length = 4 * 2;
++                local uint8 *data = new uint8[length];
++                local uint32 fragment_ram_data = $fragment_cfg_data.MAX_FRAME_LENGTH;
++                memcpy(data, &fragment_ram_data, sizeoftype(uint32));
++                memcpy(data + 4, &$this, sizeoftype(uint32));
++                call $send_to_middleware(data, length); // 在开头需要添加一个协议头，至少需要标注配置表类型
++                delete data; // notice
++            }
++
+         }
+ 
+         method write_fragment_ram() 
+@@ -1484,6 +1559,10 @@ bank pciport{
+ 	
+ }	
+ 
++method send_to_middleware(uint8 *data, int length) {
++    socket_send(data, length);
++}
++
+ 
+ /*
+ ////////////////////
